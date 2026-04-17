@@ -1,0 +1,28 @@
+---
+# tasks/verify_node.yml – Wait for the upgraded node to become Ready.
+
+- name: Wait for node {{ inventory_hostname }} to become Ready
+  ansible.builtin.command: >-
+    kubectl get node {{ inventory_hostname }}
+    -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  delegate_to: "{{ groups['kubectrl'][0] }}"
+  register: _node_ready_post
+  until: _node_ready_post.stdout == "True"
+  retries: 30
+  delay: 10
+  changed_when: false
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, verify]
+
+- name: Verify kubelet version on upgraded node
+  ansible.builtin.command: kubelet --version
+  register: _kubelet_post_version
+  changed_when: false
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, verify]
+
+- name: Display post-upgrade kubelet version
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ _kubelet_post_version.stdout | default('unknown') }}"
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, verify]

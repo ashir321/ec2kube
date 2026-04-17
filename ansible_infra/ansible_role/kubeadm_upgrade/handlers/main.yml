@@ -1,0 +1,8 @@
+---
+# handlers/main.yml – kubeadm_upgrade role
+
+- name: Reload systemd and restart kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+    daemon_reload: true

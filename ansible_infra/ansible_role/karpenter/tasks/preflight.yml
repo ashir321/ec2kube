@@ -1,0 +1,58 @@
+---
+# tasks/preflight.yml – Karpenter pre-install/upgrade checks
+
+- name: Assert required Karpenter variables are set
+  ansible.builtin.assert:
+    that:
+      - karpenter_version is defined and karpenter_version | length > 0
+      - karpenter_version != "1.8.4"
+      - karpenter_cluster_name is defined and karpenter_cluster_name | length > 0
+      - karpenter_cluster_endpoint is defined and karpenter_cluster_endpoint | length > 0
+    fail_msg: >-
+      Karpenter requires karpenter_version (not 1.8.4),
+      karpenter_cluster_name, and karpenter_cluster_endpoint to be set.
+    success_msg: "Karpenter preflight passed: version={{ karpenter_version }}"
+  tags: [karpenter, preflight]
+
+- name: Verify helm is installed
+  ansible.builtin.command: helm version --short
+  register: _helm_version
+  changed_when: false
+  failed_when: _helm_version.rc != 0
+  tags: [karpenter, preflight]
+
+- name: Display Helm version
+  ansible.builtin.debug:
+    msg: "Helm version: {{ _helm_version.stdout }}"
+  tags: [karpenter, preflight]
+
+- name: Verify kubectl connectivity
+  ansible.builtin.command: kubectl cluster-info
+  register: _cluster_info
+  changed_when: false
+  failed_when: _cluster_info.rc != 0
+  tags: [karpenter, preflight]
+
+- name: Check current Karpenter deployment (if any)
+  ansible.builtin.command: >-
+    helm list -n {{ karpenter_namespace }} -o json
+  register: _helm_list
+  changed_when: false
+  failed_when: false
+  tags: [karpenter, preflight]
+
+- name: Parse current Karpenter Helm release
+  ansible.builtin.set_fact:
+    _karpenter_current_releases: "{{ _helm_list.stdout | default('[]') | from_json }}"
+  tags: [karpenter, preflight]
+
+- name: Display current Karpenter release info
+  ansible.builtin.debug:
+    msg: >-
+      {% if _karpenter_current_releases | length > 0 %}
+      Current Karpenter release: {{ _karpenter_current_releases[0].chart | default('none') }}
+      version={{ _karpenter_current_releases[0].app_version | default('unknown') }}
+      {% else %}
+      No existing Karpenter Helm release found – will perform fresh install.
+      {% endif %}
+  tags: [karpenter, preflight]

@@ -1,0 +1,16 @@
+---
+# tasks/main.yml – karpenter role
+# Installs or upgrades Karpenter to the pinned version via Helm.
+# Run on a control-plane node that has kubectl and helm access.
+
+- name: Preflight checks for Karpenter
+  ansible.builtin.include_tasks: preflight.yml
+  tags: [karpenter, preflight]
+
+- name: Install or upgrade Karpenter
+  ansible.builtin.include_tasks: install.yml
+  tags: [karpenter, install]
+
+- name: Validate Karpenter health
+  ansible.builtin.include_tasks: validate.yml
+  tags: [karpenter, validate]

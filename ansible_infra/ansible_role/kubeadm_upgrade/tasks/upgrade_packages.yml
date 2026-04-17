@@ -1,0 +1,142 @@
+---
+# tasks/upgrade_packages.yml – Upgrade kubeadm, kubelet, and/or kubectl packages.
+# Called twice per node: once for kubeadm, then for kubelet+kubectl.
+#
+# Variables:
+#   _upgrade_package: "kubeadm" or "kubelet_kubectl"
+
+- name: Unhold Kubernetes packages (Debian)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: install
+  loop: >-
+    {{ ['kubeadm'] if _upgrade_package == 'kubeadm'
+       else ['kubelet', 'kubectl'] }}
+  when:
+    - ansible_os_family == "Debian"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages]
+
+# ---- Ensure the target minor version repo is configured ----
+
+- name: Ensure /etc/apt/keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  when:
+    - ansible_os_family == "Debian"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages, repo]
+
+- name: Download Kubernetes APT signing key for target version
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.key
+    mode: "0644"
+    force: true
+  when:
+    - ansible_os_family == "Debian"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages, repo]
+
+- name: De-armor Kubernetes APT signing key
+  ansible.builtin.command:
+    cmd: gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-release.key
+  changed_when: true
+  when:
+    - ansible_os_family == "Debian"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages, repo]
+
+- name: Add Kubernetes APT repository for target version
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg]
+      https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/deb/ /
+    state: present
+    filename: kubernetes
+    update_cache: true
+  when:
+    - ansible_os_family == "Debian"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages, repo]
+
+- name: Add Kubernetes YUM repository for target version
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: "Kubernetes {{ kubernetes_target_minor }}"
+    baseurl: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/rpm/"
+    gpgcheck: true
+    gpgkey: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/rpm/repodata/repomd.xml.key"
+    enabled: true
+  when:
+    - ansible_os_family == "RedHat"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages, repo]
+
+# ---- Install the target version ----
+
+- name: Upgrade kubeadm (Debian)
+  ansible.builtin.apt:
+    name: "kubeadm={{ kubernetes_target_version }}"
+    state: present
+    update_cache: true
+    allow_downgrade: true
+  when:
+    - ansible_os_family == "Debian"
+    - _upgrade_package == "kubeadm"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages]
+
+- name: Upgrade kubelet and kubectl (Debian)
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ kubernetes_target_version }}"
+      - "kubectl={{ kubernetes_target_version }}"
+    state: present
+    update_cache: true
+    allow_downgrade: true
+  when:
+    - ansible_os_family == "Debian"
+    - _upgrade_package == "kubelet_kubectl"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages]
+
+- name: Upgrade kubeadm (RedHat)
+  ansible.builtin.yum:
+    name: "kubeadm-{{ kubernetes_target_version }}"
+    state: present
+    allow_downgrade: true
+  when:
+    - ansible_os_family == "RedHat"
+    - _upgrade_package == "kubeadm"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages]
+
+- name: Upgrade kubelet and kubectl (RedHat)
+  ansible.builtin.yum:
+    name:
+      - "kubelet-{{ kubernetes_target_version }}"
+      - "kubectl-{{ kubernetes_target_version }}"
+    state: present
+    allow_downgrade: true
+  when:
+    - ansible_os_family == "RedHat"
+    - _upgrade_package == "kubelet_kubectl"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages]
+
+# ---- Re-hold packages ----
+
+- name: Hold Kubernetes packages (Debian)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: >-
+    {{ ['kubeadm'] if _upgrade_package == 'kubeadm'
+       else ['kubelet', 'kubectl'] }}
+  when:
+    - ansible_os_family == "Debian"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, packages]

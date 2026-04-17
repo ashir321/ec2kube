@@ -1,0 +1,17 @@
+---
+# tasks/uncordon_node.yml – Re-enable scheduling on a node after upgrade.
+
+- name: Uncordon node {{ inventory_hostname }}
+  ansible.builtin.command: >-
+    kubectl uncordon {{ inventory_hostname }}
+  delegate_to: "{{ groups['kubectrl'][0] }}"
+  register: _uncordon_result
+  changed_when: "'uncordoned' in _uncordon_result.stdout"
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, uncordon]
+
+- name: Display uncordon result
+  ansible.builtin.debug:
+    msg: "Node {{ inventory_hostname }} uncordoned successfully"
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, uncordon]

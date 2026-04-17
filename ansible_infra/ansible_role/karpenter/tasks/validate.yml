@@ -1,0 +1,73 @@
+---
+# tasks/validate.yml – Post-install/upgrade health checks for Karpenter.
+
+- name: Wait for Karpenter controller pods to be Running
+  ansible.builtin.command: >-
+    kubectl get pods -n {{ karpenter_namespace }}
+    -l app.kubernetes.io/name=karpenter
+    -o jsonpath='{.items[*].status.phase}'
+  register: _karpenter_pods_phase
+  until: >-
+    _karpenter_pods_phase.stdout | default('') | length > 0
+    and 'Pending' not in _karpenter_pods_phase.stdout
+    and 'ContainerCreating' not in _karpenter_pods_phase.stdout
+  retries: "{{ karpenter_health_check_retries }}"
+  delay: "{{ karpenter_health_check_delay }}"
+  changed_when: false
+  tags: [karpenter, validate]
+
+- name: Verify all Karpenter pods are Running
+  ansible.builtin.assert:
+    that:
+      - "'Running' in _karpenter_pods_phase.stdout"
+    fail_msg: >-
+      Karpenter pods are not all Running after upgrade.
+      Current phases: {{ _karpenter_pods_phase.stdout }}
+    success_msg: "All Karpenter pods are Running."
+  tags: [karpenter, validate]
+
+- name: Display Karpenter pod details
+  ansible.builtin.command: >-
+    kubectl get pods -n {{ karpenter_namespace }} -o wide
+  register: _karpenter_pods_wide
+  changed_when: false
+  tags: [karpenter, validate]
+
+- name: Show Karpenter pod details
+  ansible.builtin.debug:
+    msg: "{{ _karpenter_pods_wide.stdout_lines }}"
+  tags: [karpenter, validate]
+
+- name: Verify Karpenter Helm release version
+  ansible.builtin.command: >-
+    helm list -n {{ karpenter_namespace }}
+    -f {{ karpenter_release_name }}
+    -o json
+  register: _karpenter_helm_status
+  changed_when: false
+  tags: [karpenter, validate]
+
+- name: Parse and display Karpenter Helm release
+  ansible.builtin.debug:
+    msg: >-
+      Karpenter Helm release:
+      {{ (_karpenter_helm_status.stdout | from_json)[0] | default({}) }}
+  tags: [karpenter, validate]
+
+- name: Verify Karpenter CRDs are present
+  ansible.builtin.command: kubectl get crd -o name
+  register: _all_crds
+  changed_when: false
+  tags: [karpenter, validate]
+
+- name: Assert Karpenter CRDs exist
+  ansible.builtin.assert:
+    that:
+      - "'nodepools.karpenter.sh' in _all_crds.stdout"
+      - "'nodeclaims.karpenter.sh' in _all_crds.stdout"
+      - "'ec2nodeclasses.karpenter.k8s.aws' in _all_crds.stdout"
+    fail_msg: >-
+      Expected Karpenter v1.x CRDs not found.
+      Available CRDs: {{ _all_crds.stdout_lines }}
+    success_msg: "Karpenter v1.x CRDs are present (NodePool, NodeClaim, EC2NodeClass)."
+  tags: [karpenter, validate]

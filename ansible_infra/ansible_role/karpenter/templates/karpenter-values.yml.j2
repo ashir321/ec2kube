@@ -1,0 +1,37 @@
+---
+# Karpenter Helm values template – v1.8.6
+# This file is rendered by Ansible and passed to `helm upgrade --install`.
+# Adjust to match your cluster's requirements.
+
+# -- Karpenter controller settings --
+settings:
+  # Name of the Kubernetes cluster.
+  clusterName: "{{ karpenter_cluster_name }}"
+  # API server endpoint URL.
+  clusterEndpoint: "{{ karpenter_cluster_endpoint }}"
+{% if karpenter_interruption_queue_name | default('') | length > 0 %}
+  # SQS queue for native interruption handling (Karpenter v1.x).
+  interruptionQueue: "{{ karpenter_interruption_queue_name }}"
+{% endif %}
+
+# -- Service account for IRSA / pod identity --
+serviceAccount:
+  annotations:
+{% if karpenter_iam_role_arn | default('') | length > 0 %}
+    eks.amazonaws.com/role-arn: "{{ karpenter_iam_role_arn }}"
+{% else %}
+    {}
+{% endif %}
+
+# -- Replicas for high availability --
+replicas: 2
+
+# -- Resource requests/limits --
+controller:
+  resources:
+    requests:
+      cpu: "1"
+      memory: "1Gi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"

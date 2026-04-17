@@ -1,0 +1,97 @@
+---
+# tasks/install.yml – Install or upgrade Karpenter via Helm.
+# Karpenter v1.x uses OCI-based charts from public.ecr.aws/karpenter.
+
+# ---- Create namespace ----
+
+- name: Ensure Karpenter namespace exists
+  ansible.builtin.command: >-
+    kubectl create namespace {{ karpenter_namespace }} --dry-run=client -o yaml
+  register: _ns_manifest
+  changed_when: false
+  tags: [karpenter, install]
+
+- name: Apply Karpenter namespace
+  ansible.builtin.command: >-
+    kubectl apply -f -
+  args:
+    stdin: "{{ _ns_manifest.stdout }}"
+  register: _ns_apply
+  changed_when: "'created' in _ns_apply.stdout"
+  tags: [karpenter, install]
+
+# ---- CRD upgrade (before Helm release) ----
+# Karpenter v1.x CRDs should be applied before the controller is upgraded.
+# This ensures the new controller finds the correct CRD versions.
+
+- name: Upgrade Karpenter CRDs from the chart
+  ansible.builtin.command: >-
+    helm template {{ karpenter_release_name }}
+    {{ karpenter_helm_repo_url }}/{{ karpenter_helm_chart }}
+    --version {{ karpenter_version }}
+    --namespace {{ karpenter_namespace }}
+    --include-crds
+    --set installCRDs=true
+  register: _karpenter_template
+  changed_when: false
+  when: karpenter_upgrade_crds_first | bool
+  tags: [karpenter, install, crds]
+
+- name: Extract and apply CRDs from Helm template
+  ansible.builtin.shell: |
+    set -euo pipefail
+    echo '{{ _karpenter_template.stdout }}' | \
+      awk '/^---/{found=0} /kind: CustomResourceDefinition/{found=1} found{print}' | \
+      kubectl apply --server-side --force-conflicts -f - 2>&1 || true
+  args:
+    executable: /bin/bash
+  register: _crd_apply
+  changed_when: "'configured' in _crd_apply.stdout or 'created' in _crd_apply.stdout"
+  when:
+    - karpenter_upgrade_crds_first | bool
+    - _karpenter_template.stdout | default('') | length > 0
+  tags: [karpenter, install, crds]
+
+- name: Display CRD apply result
+  ansible.builtin.debug:
+    msg: "{{ _crd_apply.stdout_lines | default(['No CRDs to apply']) }}"
+    verbosity: 1
+  when: karpenter_upgrade_crds_first | bool
+  tags: [karpenter, install, crds]
+
+# ---- Render Helm values ----
+
+- name: Render Karpenter Helm values file
+  ansible.builtin.template:
+    src: "{{ karpenter_helm_values_template }}"
+    dest: /tmp/karpenter-values.yml
+    mode: "0600"
+  tags: [karpenter, install]
+
+# ---- Helm upgrade --install ----
+
+- name: "Install/Upgrade Karpenter to v{{ karpenter_version }}"
+  ansible.builtin.command: >-
+    helm upgrade --install {{ karpenter_release_name }}
+    {{ karpenter_helm_repo_url }}/{{ karpenter_helm_chart }}
+    --version {{ karpenter_version }}
+    --namespace {{ karpenter_namespace }}
+    --values /tmp/karpenter-values.yml
+    --timeout {{ karpenter_helm_timeout }}
+    --wait
+  register: _helm_upgrade
+  changed_when: "'has been upgraded' in _helm_upgrade.stdout or 'has been installed' in _helm_upgrade.stdout"
+  tags: [karpenter, install]
+
+- name: Display Helm upgrade output
+  ansible.builtin.debug:
+    msg: "{{ _helm_upgrade.stdout_lines | default([]) }}"
+  tags: [karpenter, install]
+
+# ---- Clean up temp values file ----
+
+- name: Remove temporary Helm values file
+  ansible.builtin.file:
+    path: /tmp/karpenter-values.yml
+    state: absent
+  tags: [karpenter, install]

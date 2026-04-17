@@ -1,0 +1,24 @@
+---
+# tasks/drain_node.yml – Safely drain a node before upgrade.
+# Delegated to a control-plane node that has kubectl access.
+
+- name: Drain node {{ inventory_hostname }}
+  ansible.builtin.command: >-
+    kubectl drain {{ inventory_hostname }}
+    --timeout={{ drain_timeout }}s
+    --grace-period={{ drain_grace_period }}
+    {% if drain_ignore_daemonsets | bool %}--ignore-daemonsets{% endif %}
+    {% if drain_delete_emptydir_data | bool %}--delete-emptydir-data{% endif %}
+    {% if drain_force | bool %}--force{% endif %}
+  delegate_to: "{{ groups['kubectrl'][0] }}"
+  register: _drain_result
+  changed_when: "'evicting pod' in _drain_result.stdout or 'drained' in _drain_result.stdout"
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, drain]
+
+- name: Display drain output
+  ansible.builtin.debug:
+    msg: "{{ _drain_result.stdout_lines | default([]) }}"
+    verbosity: 1
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, drain]
