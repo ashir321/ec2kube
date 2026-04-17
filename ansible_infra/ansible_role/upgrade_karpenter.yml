@@ -1,0 +1,25 @@
+---
+# upgrade_karpenter.yml – Install or upgrade Karpenter to v1.8.6.
+#
+# Usage:
+#   ansible-playbook upgrade_karpenter.yml -i inv \
+#     -e karpenter_cluster_name=my-cluster \
+#     -e karpenter_cluster_endpoint=https://10.0.1.100:6443 \
+#     -e karpenter_iam_role_arn=arn:aws:iam::123456789012:role/KarpenterControllerRole
+#
+# Prerequisites:
+#   - Helm 3.x installed on the control-plane node.
+#   - kubectl configured with cluster-admin access.
+#   - Karpenter IAM role and SQS queue (if using interruption) already created.
+#   - If upgrading from Karpenter <1.0, migrate CRDs from v1beta1 to v1 first.
+#
+# IMPORTANT: Karpenter v1.8.4 is NOT used – pinned to v1.8.6.
+
+- name: "Karpenter v{{ karpenter_version | default('1.8.6') }} install/upgrade"
+  hosts: kubectrl[0]
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: karpenter
+  tags: [karpenter]

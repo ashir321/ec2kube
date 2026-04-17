@@ -1,2 +1,9 @@
 ---
 # defaults file for kubecontrolplane
+
+# Kubernetes target version for package installation (e.g. "1.32.3-1.1").
+kubernetes_target_version: "1.32.3-1.1"
+# Minor version for the pkgs.k8s.io APT/YUM repository URL (e.g. "v1.32").
+kubernetes_target_minor: "v1.32"
+# Pod network CIDR passed to kubeadm init.
+kubernetes_pod_network_cidr: "10.244.0.0/16"

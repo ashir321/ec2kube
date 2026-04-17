@@ -1,0 +1,8 @@
+---
+# meta/main.yml – karpenter role
+dependencies: []
+galaxy_info:
+  author: ec2kube
+  description: "Install and upgrade Karpenter via Helm on kubeadm-managed clusters"
+  license: MIT
+  min_ansible_version: "2.12"

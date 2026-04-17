@@ -1,0 +1,44 @@
+---
+# tasks/main.yml – kubeadm_upgrade role
+# Orchestrates a safe kubeadm-based upgrade on a single node.
+# The calling playbook must set `kubeadm_upgrade_node_role` to one of:
+#   "first_control_plane", "control_plane", or "worker".
+
+- name: Run preflight checks
+  ansible.builtin.include_tasks: preflight.yml
+  tags: [upgrade, preflight]
+
+- name: Drain node before upgrade
+  ansible.builtin.include_tasks: drain_node.yml
+  tags: [upgrade, drain]
+
+- name: Upgrade kubeadm package
+  ansible.builtin.include_tasks: upgrade_packages.yml
+  vars:
+    _upgrade_package: kubeadm
+  tags: [upgrade, packages]
+
+- name: Run kubeadm upgrade
+  ansible.builtin.include_tasks: kubeadm_upgrade.yml
+  tags: [upgrade, kubeadm]
+
+- name: Upgrade kubelet and kubectl packages
+  ansible.builtin.include_tasks: upgrade_packages.yml
+  vars:
+    _upgrade_package: kubelet_kubectl
+  tags: [upgrade, packages]
+
+- name: Reload systemd and restart kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+    daemon_reload: true
+  tags: [upgrade, kubelet]
+
+- name: Verify node becomes Ready
+  ansible.builtin.include_tasks: verify_node.yml
+  tags: [upgrade, verify]
+
+- name: Uncordon node after upgrade
+  ansible.builtin.include_tasks: uncordon_node.yml
+  tags: [upgrade, uncordon]

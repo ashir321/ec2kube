@@ -1,0 +1,34 @@
+---
+# defaults/main.yml – karpenter role
+# All values can be overridden via group_vars, host_vars, or extra-vars.
+
+# Karpenter version – pinned to v1.8.6.
+# IMPORTANT: Do NOT use v1.8.4 – it has known issues.
+karpenter_version: "1.8.6"
+karpenter_namespace: "karpenter"
+karpenter_helm_repo_url: "oci://public.ecr.aws/karpenter"
+karpenter_helm_chart: "karpenter"
+karpenter_release_name: "karpenter"
+
+# Cluster configuration – MUST be overridden per environment.
+karpenter_cluster_name: ""
+karpenter_cluster_endpoint: ""
+
+# IAM role ARN for the Karpenter controller (IRSA or pod identity).
+karpenter_iam_role_arn: ""
+
+# SQS queue for interruption handling (native-sqs mode in Karpenter v1.x).
+karpenter_interruption_queue_name: ""
+
+# Helm values template. Override to supply a custom values file.
+karpenter_helm_values_template: "karpenter-values.yml.j2"
+
+# How long to wait for Karpenter pods to become healthy after upgrade.
+karpenter_health_check_retries: 30
+karpenter_health_check_delay: 10
+
+# Whether to upgrade CRDs before the Helm release. Recommended for major upgrades.
+karpenter_upgrade_crds_first: true
+
+# Helm timeout
+karpenter_helm_timeout: "10m0s"

@@ -1,7 +1,14 @@
 ---
 # handlers file for kubecontrolplane
-- name: docker service
-  service:
-    name: docker
+
+- name: Restart containerd
+  ansible.builtin.service:
+    name: containerd
     state: restarted
-  listen: docker service
+    daemon_reload: true
+
+- name: Restart kubelet
+  ansible.builtin.service:
+    name: kubelet
+    state: restarted
+    daemon_reload: true

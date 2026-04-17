@@ -1,0 +1,3 @@
+---
+# handlers/main.yml – karpenter role
+# No handlers needed – Karpenter lifecycle is managed via Helm.

@@ -1,0 +1,85 @@
+---
+# upgrade_workers.yml – Upgrade Kubernetes on worker nodes.
+#
+# Usage:
+#   ansible-playbook upgrade_workers.yml -i nodeinv \
+#     -e kubernetes_target_version=1.32.3-1.1 \
+#     -e kubernetes_target_minor=v1.32 \
+#     -e kubernetes_target_semver=v1.32.3
+#
+# This playbook upgrades worker nodes serially (one at a time by default)
+# to avoid cluster-wide disruption. Run this AFTER upgrading all
+# control-plane nodes with upgrade_control_plane.yml.
+#
+# IMPORTANT: The inventory must include at least one kubectrl host for
+# drain/uncordon delegation. Combine inventories:
+#   ansible-playbook upgrade_workers.yml -i inv -i nodeinv ...
+
+# ---- Pre-upgrade validation ----
+- name: "Pre-upgrade: validate worker upgrade prerequisites"
+  hosts: kubectrl[0]
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Assert target version variables are defined
+      ansible.builtin.assert:
+        that:
+          - kubernetes_target_version is defined and kubernetes_target_version | length > 0
+          - kubernetes_target_minor is defined and kubernetes_target_minor | length > 0
+          - kubernetes_target_semver is defined and kubernetes_target_semver | length > 0
+        fail_msg: >-
+          You must set kubernetes_target_version, kubernetes_target_minor,
+          and kubernetes_target_semver via extra-vars or group_vars.
+      tags: [upgrade, preflight]
+
+    - name: Display current node status before worker upgrade
+      ansible.builtin.command: kubectl get nodes -o wide
+      register: _pre_worker_nodes
+      changed_when: false
+      tags: [upgrade, preflight]
+
+    - name: Show current node status
+      ansible.builtin.debug:
+        msg: "{{ _pre_worker_nodes.stdout_lines }}"
+      tags: [upgrade, preflight]
+
+# ---- Upgrade worker nodes (serially) ----
+- name: "Upgrade worker nodes"
+  hosts: kubenodes
+  become: true
+  gather_facts: true
+  serial: "{{ worker_serial | default(1) }}"
+  any_errors_fatal: true
+  roles:
+    - role: kubeadm_upgrade
+      kubeadm_upgrade_node_role: worker
+  tags: [upgrade, worker]
+
+# ---- Post-upgrade verification ----
+- name: "Post-upgrade: verify all nodes"
+  hosts: kubectrl[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Show final cluster node status
+      ansible.builtin.command: kubectl get nodes -o wide
+      register: _final_all_nodes
+      changed_when: false
+      tags: [upgrade, verify]
+
+    - name: Display final cluster node status
+      ansible.builtin.debug:
+        msg: "{{ _final_all_nodes.stdout_lines }}"
+      tags: [upgrade, verify]
+
+    - name: Show all pods across all namespaces
+      ansible.builtin.command: kubectl get pods -A -o wide
+      register: _all_pods
+      changed_when: false
+      tags: [upgrade, verify]
+
+    - name: Display all pods
+      ansible.builtin.debug:
+        msg: "{{ _all_pods.stdout_lines }}"
+      tags: [upgrade, verify]

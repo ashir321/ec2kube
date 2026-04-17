@@ -1,57 +1,182 @@
 ---
+# install_kubernetes.yml – Install kubeadm, kubelet, kubectl on control-plane
+# Uses the current pkgs.k8s.io repository (not the legacy apt.kubernetes.io).
 
-- name: add GPG key
-  apt_key:
-    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+# ---- Repository setup (Debian/Ubuntu) ----
+
+- name: Ensure /etc/apt/keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+- name: Download Kubernetes APT signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.key
+    mode: "0644"
+    force: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+- name: De-armor Kubernetes APT signing key
+  ansible.builtin.command:
+    cmd: gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-release.key
+  changed_when: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+- name: Add Kubernetes APT repository (pkgs.k8s.io)
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg]
+      https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/deb/ /
     state: present
-- name: Add specified repository into sources list
-  apt_repository:
-    repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+    filename: kubernetes
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+# ---- Repository setup (RHEL/CentOS) ----
+
+- name: Add Kubernetes YUM repository (pkgs.k8s.io)
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: "Kubernetes {{ kubernetes_target_minor }}"
+    baseurl: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/rpm/"
+    gpgcheck: true
+    gpgkey: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/rpm/repodata/repomd.xml.key"
+    enabled: true
+  when: ansible_os_family == "RedHat"
+  tags: [kubernetes, repo]
+
+# ---- Install packages ----
+
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, packages]
+
+- name: Install kubelet, kubeadm, kubectl (Debian)
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ kubernetes_target_version }}"
+      - "kubeadm={{ kubernetes_target_version }}"
+      - "kubectl={{ kubernetes_target_version }}"
     state: present
-- name: Run the equivalent of "apt-get update" as a separate step
-  apt:
-    update_cache: yes
-- name: Install kube and kubectl
-  apt:
+    allow_downgrade: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, packages]
+
+- name: Hold Kubernetes packages (Debian)
+  ansible.builtin.dpkg_selections:
     name: "{{ item }}"
-    state: latest
-    #update_cache: yes
+    selection: hold
   loop:
     - kubelet
     - kubeadm
     - kubectl
-- name: swapoff for kubernetes
-  command: swapoff -a
-- name: update docker file system
-  template:
-    src: daemon.json.j2
-    dest: /etc/docker/daemon.json
-  notify: docker service
-- name: restart docker
-  command: systemctl restart docker
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, packages]
 
-- name: remove containerd config
-  command: rm -f /etc/containerd/config.toml
+- name: Install kubelet, kubeadm, kubectl (RedHat)
+  ansible.builtin.yum:
+    name:
+      - "kubelet-{{ kubernetes_target_version }}"
+      - "kubeadm-{{ kubernetes_target_version }}"
+      - "kubectl-{{ kubernetes_target_version }}"
+    state: present
+    allow_downgrade: true
+  when: ansible_os_family == "RedHat"
+  tags: [kubernetes, packages]
 
-- name: restart containerd
-  command: systemctl restart containerd
+# ---- Pre-init preparation ----
 
-- name: run kubeadm init
-  command: kubeadm init --pod-network-cidr=10.244.0.0/16
+- name: Disable swap (required by kubelet)
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+  tags: [kubernetes, init]
 
-- name: save kubeconfig file
-  command: mkdir -p $HOME/.kube
+- name: Remove containerd default config to use defaults
+  ansible.builtin.file:
+    path: /etc/containerd/config.toml
+    state: absent
+  notify: Restart containerd
+  tags: [kubernetes, init]
 
-- name: copy kubeconfig file
-  command: cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+- name: Flush handlers to restart containerd before kubeadm init
+  ansible.builtin.meta: flush_handlers
 
-#- name: change permission for kubeconfig file
- # command: chown $(id -u):$(id -g) $HOME/.kube/config
-- name: change permission for kubeconfig file
-  file:
-    path: $HOME/.kube/config 
+# ---- kubeadm init ----
+
+- name: Check if kubeadm has already been initialised
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeadm_already_init
+  tags: [kubernetes, init]
+
+- name: Run kubeadm init on control plane
+  ansible.builtin.command: >-
+    kubeadm init --pod-network-cidr={{ kubernetes_pod_network_cidr }}
+  when: not kubeadm_already_init.stat.exists
+  register: kubeadm_init_result
+  changed_when: kubeadm_init_result.rc == 0
+  tags: [kubernetes, init]
+
+# ---- kubeconfig setup ----
+
+- name: Create .kube directory for root
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+    mode: "0755"
+  tags: [kubernetes, kubeconfig]
+
+- name: Copy admin.conf to kubeconfig
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: true
     owner: "{{ ansible_effective_user_id }}"
     group: "{{ ansible_effective_group_id }}"
+    mode: "0600"
+  tags: [kubernetes, kubeconfig]
 
-- name: install network plugin
-  command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+# ---- Network plugin ----
+
+- name: Install Flannel CNI plugin
+  ansible.builtin.command: >-
+    kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+  register: flannel_apply
+  changed_when: "'created' in flannel_apply.stdout or 'configured' in flannel_apply.stdout"
+  tags: [kubernetes, network]
+
+# ---- Enable and start kubelet ----
+
+- name: Enable and start kubelet
+  ansible.builtin.service:
+    name: kubelet
+    state: started
+    enabled: true
+  tags: [kubernetes, service]
+
+# ---- Post-init verification ----
+
+- name: Wait for node to become Ready
+  ansible.builtin.command: kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
+  register: node_ready
+  until: node_ready.stdout == "True"
+  retries: 30
+  delay: 10
+  changed_when: false
+  tags: [kubernetes, verify]
+
+- name: Display node status
+  ansible.builtin.debug:
+    msg: "Control plane node is Ready"
+  when: node_ready.stdout == "True"
+  tags: [kubernetes, verify]
+

@@ -1,0 +1,58 @@
+---
+# tasks/kubeadm_upgrade.yml – Execute the correct kubeadm upgrade command
+# based on the node's role.
+#
+# - first_control_plane: `kubeadm upgrade apply <version>`
+# - control_plane / worker: `kubeadm upgrade node`
+
+- name: Verify kubeadm version matches target
+  ansible.builtin.command: kubeadm version -o short
+  register: _kubeadm_version_check
+  changed_when: false
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, kubeadm]
+
+- name: Display kubeadm version
+  ansible.builtin.debug:
+    msg: "kubeadm version on {{ inventory_hostname }}: {{ _kubeadm_version_check.stdout | default('unknown') }}"
+  when: not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, kubeadm]
+
+# First control-plane node: kubeadm upgrade apply
+- name: "kubeadm upgrade apply {{ kubernetes_target_semver }} (first control plane)"
+  ansible.builtin.command: >-
+    kubeadm upgrade apply {{ kubernetes_target_semver }} --yes
+  register: _kubeadm_upgrade_apply
+  changed_when: "'successfully' in (_kubeadm_upgrade_apply.stdout | default(''))"
+  when:
+    - kubeadm_upgrade_node_role == "first_control_plane"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, kubeadm]
+
+- name: Display kubeadm upgrade apply output
+  ansible.builtin.debug:
+    msg: "{{ _kubeadm_upgrade_apply.stdout_lines | default([]) }}"
+    verbosity: 1
+  when:
+    - kubeadm_upgrade_node_role == "first_control_plane"
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, kubeadm]
+
+# Additional control-plane and worker nodes: kubeadm upgrade node
+- name: "kubeadm upgrade node ({{ kubeadm_upgrade_node_role }})"
+  ansible.builtin.command: kubeadm upgrade node
+  register: _kubeadm_upgrade_node
+  changed_when: "'successfully' in (_kubeadm_upgrade_node.stdout | default(''))"
+  when:
+    - kubeadm_upgrade_node_role in ["control_plane", "worker"]
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, kubeadm]
+
+- name: Display kubeadm upgrade node output
+  ansible.builtin.debug:
+    msg: "{{ _kubeadm_upgrade_node.stdout_lines | default([]) }}"
+    verbosity: 1
+  when:
+    - kubeadm_upgrade_node_role in ["control_plane", "worker"]
+    - not (_skip_upgrade | default(false) | bool)
+  tags: [upgrade, kubeadm]

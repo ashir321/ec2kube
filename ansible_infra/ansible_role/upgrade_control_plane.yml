@@ -1,0 +1,109 @@
+---
+# upgrade_control_plane.yml – Upgrade Kubernetes on control-plane nodes.
+#
+# Usage:
+#   ansible-playbook upgrade_control_plane.yml -i inv \
+#     -e kubernetes_target_version=1.32.3-1.1 \
+#     -e kubernetes_target_minor=v1.32 \
+#     -e kubernetes_target_semver=v1.32.3
+#
+# This playbook upgrades the FIRST control-plane node, then any additional
+# control-plane nodes, following official kubeadm upgrade sequencing.
+# It runs serially (one node at a time) to maintain cluster quorum.
+
+# ---- Pre-upgrade validation ----
+- name: "Pre-upgrade: validate cluster state"
+  hosts: kubectrl
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  tasks:
+    - name: Assert target version variables are defined
+      ansible.builtin.assert:
+        that:
+          - kubernetes_target_version is defined and kubernetes_target_version | length > 0
+          - kubernetes_target_minor is defined and kubernetes_target_minor | length > 0
+          - kubernetes_target_semver is defined and kubernetes_target_semver | length > 0
+        fail_msg: >-
+          You must set kubernetes_target_version, kubernetes_target_minor,
+          and kubernetes_target_semver via extra-vars or group_vars.
+      tags: [upgrade, preflight]
+
+    - name: Run kubeadm upgrade plan (informational)
+      ansible.builtin.command: kubeadm upgrade plan
+      register: _upgrade_plan
+      changed_when: false
+      failed_when: false
+      run_once: true
+      tags: [upgrade, preflight]
+
+    - name: Display upgrade plan
+      ansible.builtin.debug:
+        msg: "{{ _upgrade_plan.stdout_lines | default([]) }}"
+      run_once: true
+      tags: [upgrade, preflight]
+
+    - name: Verify current cluster node status
+      ansible.builtin.command: kubectl get nodes -o wide
+      register: _nodes_status
+      changed_when: false
+      run_once: true
+      tags: [upgrade, preflight]
+
+    - name: Display current node status
+      ansible.builtin.debug:
+        msg: "{{ _nodes_status.stdout_lines | default([]) }}"
+      run_once: true
+      tags: [upgrade, preflight]
+
+# ---- Upgrade first control-plane node ----
+- name: "Upgrade first control-plane node"
+  hosts: kubectrl[0]
+  become: true
+  gather_facts: true
+  serial: "{{ control_plane_serial | default(1) }}"
+  any_errors_fatal: true
+  roles:
+    - role: kubeadm_upgrade
+      kubeadm_upgrade_node_role: first_control_plane
+  tags: [upgrade, control-plane, first]
+
+# ---- Upgrade additional control-plane nodes ----
+- name: "Upgrade additional control-plane nodes"
+  hosts: "kubectrl[1:]"
+  become: true
+  gather_facts: true
+  serial: "{{ control_plane_serial | default(1) }}"
+  any_errors_fatal: true
+  roles:
+    - role: kubeadm_upgrade
+      kubeadm_upgrade_node_role: control_plane
+  tags: [upgrade, control-plane, additional]
+
+# ---- Post-upgrade verification ----
+- name: "Post-upgrade: verify control plane"
+  hosts: kubectrl[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Show final node status
+      ansible.builtin.command: kubectl get nodes -o wide
+      register: _final_nodes
+      changed_when: false
+      tags: [upgrade, verify]
+
+    - name: Display final node status
+      ansible.builtin.debug:
+        msg: "{{ _final_nodes.stdout_lines }}"
+      tags: [upgrade, verify]
+
+    - name: Show kube-system pods
+      ansible.builtin.command: kubectl get pods -n kube-system -o wide
+      register: _kube_system_pods
+      changed_when: false
+      tags: [upgrade, verify]
+
+    - name: Display kube-system pods
+      ansible.builtin.debug:
+        msg: "{{ _kube_system_pods.stdout_lines }}"
+      tags: [upgrade, verify]

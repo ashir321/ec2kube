@@ -1,0 +1,21 @@
+---
+# defaults/main.yml – kubeadm_upgrade role
+# All values can be overridden via group_vars, host_vars, or extra-vars.
+
+# Target Kubernetes version for the upgrade (full package version string).
+kubernetes_target_version: "1.32.3-1.1"
+# Minor version for the pkgs.k8s.io repository URL (e.g. "v1.32").
+kubernetes_target_minor: "v1.32"
+# Semantic version string for kubeadm upgrade apply (e.g. "v1.32.3").
+kubernetes_target_semver: "v1.32.3"
+
+# Drain / uncordon
+drain_timeout: 300
+drain_grace_period: 30
+drain_delete_emptydir_data: true
+drain_ignore_daemonsets: true
+drain_force: false
+
+# Role of the node being upgraded. Set via the playbook.
+# Valid values: "first_control_plane", "control_plane", "worker"
+kubeadm_upgrade_node_role: "worker"

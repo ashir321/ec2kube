@@ -1,0 +1,92 @@
+---
+# tasks/preflight.yml – Pre-upgrade validation checks
+# Ensures the upgrade is safe before proceeding.
+
+- name: Gather current kubelet version
+  ansible.builtin.command: kubelet --version
+  register: _kubelet_version_raw
+  changed_when: false
+  failed_when: _kubelet_version_raw.rc != 0
+  tags: [upgrade, preflight]
+
+- name: Parse current Kubernetes version
+  ansible.builtin.set_fact:
+    _current_k8s_version: >-
+      {{ _kubelet_version_raw.stdout | regex_search('v([0-9]+\.[0-9]+\.[0-9]+)', '\1') | first }}
+  tags: [upgrade, preflight]
+
+- name: Parse target Kubernetes version
+  ansible.builtin.set_fact:
+    _target_k8s_version: >-
+      {{ kubernetes_target_semver | regex_replace('^v', '') }}
+  tags: [upgrade, preflight]
+
+- name: Extract current and target minor versions
+  ansible.builtin.set_fact:
+    _current_minor: "{{ (_current_k8s_version.split('.')[:2]) | join('.') }}"
+    _target_minor: "{{ (_target_k8s_version.split('.')[:2]) | join('.') }}"
+  tags: [upgrade, preflight]
+
+- name: Display version information
+  ansible.builtin.debug:
+    msg: >-
+      Node={{ inventory_hostname }}
+      Current={{ _current_k8s_version }}
+      Target={{ _target_k8s_version }}
+      Role={{ kubeadm_upgrade_node_role }}
+  tags: [upgrade, preflight]
+
+- name: Fail if attempting to skip a minor version
+  ansible.builtin.assert:
+    that:
+      - (_target_minor.split('.')[1] | int) - (_current_minor.split('.')[1] | int) <= 1
+      - (_target_minor.split('.')[1] | int) - (_current_minor.split('.')[1] | int) >= 0
+      - _target_minor.split('.')[0] == _current_minor.split('.')[0]
+    fail_msg: >-
+      UNSAFE: Cannot skip minor versions during kubeadm upgrade.
+      Current={{ _current_k8s_version }} Target={{ _target_k8s_version }}.
+      kubeadm only supports upgrading one minor version at a time
+      (e.g. 1.31.x → 1.32.x). Upgrade through each intermediate version.
+    success_msg: "Version skew check passed: {{ _current_minor }} → {{ _target_minor }}"
+  tags: [upgrade, preflight]
+
+- name: Fail if target version is older than current
+  ansible.builtin.assert:
+    that:
+      - _target_k8s_version is version(_current_k8s_version, '>=')
+    fail_msg: >-
+      Target version {{ _target_k8s_version }} is older than current {{ _current_k8s_version }}.
+      Downgrades are not supported by kubeadm.
+    success_msg: "Version comparison passed: {{ _current_k8s_version }} → {{ _target_k8s_version }}"
+  tags: [upgrade, preflight]
+
+- name: Skip upgrade if already at target version
+  ansible.builtin.set_fact:
+    _skip_upgrade: "{{ _current_k8s_version is version(_target_k8s_version, '==') }}"
+  tags: [upgrade, preflight]
+
+- name: Display skip notice if already at target
+  ansible.builtin.debug:
+    msg: "Node {{ inventory_hostname }} is already at version {{ _target_k8s_version }} – skipping upgrade"
+  when: _skip_upgrade | bool
+  tags: [upgrade, preflight]
+
+# Check that node is in Ready state before proceeding.
+- name: Verify node is Ready before upgrade
+  ansible.builtin.command: >-
+    kubectl get node {{ inventory_hostname }}
+    -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  register: _node_ready_pre
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ groups['kubectrl'][0] }}"
+  when: not (_skip_upgrade | bool)
+  tags: [upgrade, preflight]
+
+- name: Warn if node is not Ready before upgrade
+  ansible.builtin.debug:
+    msg: "WARNING: Node {{ inventory_hostname }} is not in Ready state. Proceeding with caution."
+  when:
+    - not (_skip_upgrade | bool)
+    - _node_ready_pre.stdout | default('') != 'True'
+  tags: [upgrade, preflight]
