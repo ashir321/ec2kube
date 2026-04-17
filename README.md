@@ -40,7 +40,7 @@ flowchart TD
     classDef orange fill:#FF9800,stroke:#E65100,color:#fff,stroke-width:2px
     classDef pink fill:#E91E63,stroke:#AD1457,color:#fff,stroke-width:2px
     classDef teal fill:#009688,stroke:#00695C,color:#fff,stroke-width:2px
-    classDef gold fill:#FFC107,stroke:#FF8F00,color:#1a1a1a,stroke-width:2px
+    classDef gold fill:#FFC107,stroke:#FF8F00,color:#000,stroke-width:2px
 
     DEV["👤 Developer / User"]:::blue
 
@@ -91,7 +91,7 @@ flowchart TD
 | 🟠 | **Jenkins CI/CD** | Orange | Orchestrates all stages end-to-end via `Jenkinsfile` |
 | 🟣 | **Terraform** | Purple | Provisions AWS infrastructure — networking, EC2, ASG |
 | 🟢 | **S3 Storage** | Teal | Terraform state backend + Ansible inventory sharing |
-| 🔴 | **Ansible** | Pink | Bootstraps nodes — `kubeadm init`, `kubeadm join`, containerd |
+| 🩷 | **Ansible** | Pink | Bootstraps nodes — `kubeadm init`, `kubeadm join`, containerd |
 | 🟡 | **Kubernetes** | Gold | Running cluster with Flannel CNI and Karpenter autoscaling |
 
 ---
