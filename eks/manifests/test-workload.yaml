@@ -1,0 +1,40 @@
+# Test workload — forces Karpenter to provision new nodes
+#
+# This deployment runs pause containers that consume resources but do nothing.
+# The nodeSelector ensures pods land on Karpenter-managed nodes.
+# Used by deploy-eks.sh to validate the full provisioning pipeline.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eks-validation
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate
+  namespace: eks-validation
+  labels:
+    app: inflate
+    purpose: karpenter-validation
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: inflate
+  template:
+    metadata:
+      labels:
+        app: inflate
+    spec:
+      terminationGracePeriodSeconds: 0
+      nodeSelector:
+        intent: apps
+        managed-by: karpenter
+      containers:
+        - name: inflate
+          image: public.ecr.aws/eks-distro/kubernetes/pause:3.7
+          resources:
+            requests:
+              cpu: "1"
+              memory: "1.5Gi"

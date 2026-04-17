@@ -1,0 +1,134 @@
+///////////////////////////////////////////////////////////////////////////////
+// Jenkinsfile — EKS Zero-Touch Deployment Pipeline
+//
+// Modernized from: Terraform + Ansible self-managed K8s on EC2
+// Now: Amazon EKS 1.34 + Karpenter + Pod Identity / IRSA
+//
+// This pipeline calls eks/deploy-eks.sh or eks/teardown-eks.sh based on
+// the TERRADESTROY parameter. All logic lives in the bash scripts.
+///////////////////////////////////////////////////////////////////////////////
+pipeline {
+
+    agent any
+
+    parameters {
+        choice(name: 'AUTH_MODE',
+               choices: ['pod-identity', 'irsa', 'both'],
+               description: 'Identity mode for workloads')
+        choice(name: 'TERRADESTROY',
+               choices: ['N', 'Y'],
+               description: 'Set to Y to tear down the entire stack')
+        string(name: 'CLUSTER_NAME',
+               defaultValue: 'ec2kube-eks',
+               description: 'EKS cluster name')
+        string(name: 'AWS_REGION',
+               defaultValue: 'us-east-1',
+               description: 'AWS region')
+        string(name: 'K8S_VERSION',
+               defaultValue: '1.34',
+               description: 'Target Kubernetes version')
+        string(name: 'KARPENTER_VERSION',
+               defaultValue: '1.3.0',
+               description: 'Karpenter Helm chart version')
+    }
+
+    environment {
+        AWS_ACCESS_KEY_ID     = credentials('awsaccesskey')
+        AWS_SECRET_ACCESS_KEY = credentials('awssecretkey')
+        AWS_DEFAULT_REGION    = "${params.AWS_REGION ?: 'us-east-1'}"
+
+        // These are passed through to deploy-eks.sh via env.conf or export
+        CLUSTER_NAME       = "${params.CLUSTER_NAME ?: 'ec2kube-eks'}"
+        AUTH_MODE           = "${params.AUTH_MODE ?: 'pod-identity'}"
+        K8S_VERSION         = "${params.K8S_VERSION ?: '1.34'}"
+        KARPENTER_VERSION   = "${params.KARPENTER_VERSION ?: '1.3.0'}"
+    }
+
+    options {
+        timestamps()
+        timeout(time: 60, unit: 'MINUTES')
+        ansiColor('xterm')
+    }
+
+    stages {
+
+        // ── Prerequisite checks ─────────────────────────────────────────
+        stage('Verify Prerequisites') {
+            when {
+                environment name: 'TERRADESTROY', value: 'N'
+            }
+            steps {
+                sh '''
+                echo "=== Checking required CLIs ==="
+                aws --version
+                eksctl version
+                kubectl version --client --short 2>/dev/null || kubectl version --client
+                helm version --short
+                jq --version
+                echo ""
+                echo "=== AWS Identity ==="
+                aws sts get-caller-identity
+                '''
+            }
+        }
+
+        // ── Deploy EKS + Karpenter ──────────────────────────────────────
+        stage('Deploy EKS Cluster') {
+            when {
+                environment name: 'TERRADESTROY', value: 'N'
+            }
+            steps {
+                sh '''
+                echo "=== Starting EKS deployment ==="
+                echo "AUTH_MODE=${AUTH_MODE}"
+                echo "CLUSTER_NAME=${CLUSTER_NAME}"
+                echo "K8S_VERSION=${K8S_VERSION}"
+                echo "KARPENTER_VERSION=${KARPENTER_VERSION}"
+                echo ""
+
+                # Export all params so deploy-eks.sh picks them up
+                export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+                export AUTH_MODE="${AUTH_MODE}"
+                export CLUSTER_NAME="${CLUSTER_NAME}"
+                export AWS_REGION="${AWS_DEFAULT_REGION}"
+                export K8S_VERSION="${K8S_VERSION}"
+                export KARPENTER_VERSION="${KARPENTER_VERSION}"
+
+                chmod +x eks/deploy-eks.sh
+                ./eks/deploy-eks.sh
+                '''
+            }
+        }
+
+        // ── Teardown ────────────────────────────────────────────────────
+        stage('Teardown') {
+            when {
+                environment name: 'TERRADESTROY', value: 'Y'
+            }
+            steps {
+                sh '''
+                echo "=== Starting teardown ==="
+                export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+                export CLUSTER_NAME="${CLUSTER_NAME}"
+                export AWS_REGION="${AWS_DEFAULT_REGION}"
+                export FORCE_DESTROY=Y
+
+                chmod +x eks/teardown-eks.sh
+                ./eks/teardown-eks.sh
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully."
+        }
+        failure {
+            echo "Pipeline failed. Check logs above for error details."
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
