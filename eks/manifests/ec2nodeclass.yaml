@@ -1,0 +1,58 @@
+# EC2NodeClass — Karpenter v1 API (karpenter.k8s.aws/v1)
+#
+# This defines HOW Karpenter launches EC2 instances:
+#   - AMI selection (Amazon Linux 2023)
+#   - Subnet and security group discovery via tags
+#   - EBS volume configuration
+#   - Instance metadata (IMDSv2 required for security)
+#
+# The role must match the node IAM role created by deploy-eks.sh.
+# Subnet and security group tags are applied automatically by deploy-eks.sh.
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  # Node IAM role — must match KarpenterNodeRole-<cluster-name>
+  role: "KarpenterNodeRole-ec2kube-eks"
+
+  # Use latest Amazon Linux 2023 EKS-optimized AMI
+  amiSelectorTerms:
+    - alias: al2023@latest
+
+  # Discover subnets tagged by deploy-eks.sh
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "ec2kube-eks"
+
+  # Discover security groups tagged by deploy-eks.sh
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "ec2kube-eks"
+
+  # Tags applied to launched instances
+  tags:
+    karpenter.sh/discovery: "ec2kube-eks"
+    Name: "karpenter/ec2kube-eks"
+
+  # Root volume — gp3 with encryption
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        iops: 3000
+        throughput: 125
+        encrypted: true
+        deleteOnTermination: true
+
+  # Require IMDSv2 (security best practice)
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpPutResponseHopLimit: 2
+    httpTokens: required
+
+  # Enable detailed CloudWatch monitoring
+  detailedMonitoring: true
