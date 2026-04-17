@@ -19,7 +19,7 @@ pipeline {
                choices: ['N', 'Y'],
                description: 'Set to Y to skip deployment stages')
         string(name: 'AWS_REGION',
-               defaultValue: 'us-east-1',
+               defaultValue: 'ap-south-1',
                description: 'AWS region')
         string(name: 'STATE_BUCKET',
                defaultValue: '',
