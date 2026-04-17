@@ -207,9 +207,9 @@ Set these via `group_vars/all.yml` or `--extra-vars`:
 
 | Variable | Description | Example |
 |---|---|---|
-| `kubernetes_target_version` | Full package version string | `1.32.3-1.1` |
-| `kubernetes_target_minor` | Minor version for the pkgs.k8s.io repo | `v1.32` |
-| `kubernetes_target_semver` | Semantic version for `kubeadm upgrade apply` | `v1.32.3` |
+| `kubernetes_target_version` | Full package version string | `1.35.4-1.1` |
+| `kubernetes_target_minor` | Minor version for the pkgs.k8s.io repo | `v1.35` |
+| `kubernetes_target_semver` | Semantic version for `kubeadm upgrade apply` | `v1.35.4` |
 | `drain_timeout` | Drain timeout in seconds | `300` |
 | `drain_grace_period` | Drain grace period in seconds | `30` |
 | `control_plane_serial` | How many CP nodes to upgrade at once | `1` |
@@ -222,37 +222,37 @@ cd ansible_infra/ansible_role
 
 # 1. Upgrade control-plane nodes
 ansible-playbook upgrade_control_plane.yml -i inv \
-  -e kubernetes_target_version=1.32.3-1.1 \
-  -e kubernetes_target_minor=v1.32 \
-  -e kubernetes_target_semver=v1.32.3 \
+  -e kubernetes_target_version=1.35.4-1.1 \
+  -e kubernetes_target_minor=v1.35 \
+  -e kubernetes_target_semver=v1.35.4 \
   --check --diff  # dry-run first
 
 ansible-playbook upgrade_control_plane.yml -i inv \
-  -e kubernetes_target_version=1.32.3-1.1 \
-  -e kubernetes_target_minor=v1.32 \
-  -e kubernetes_target_semver=v1.32.3
+  -e kubernetes_target_version=1.35.4-1.1 \
+  -e kubernetes_target_minor=v1.35 \
+  -e kubernetes_target_semver=v1.35.4
 
 # 2. Upgrade worker nodes (combine inventories for drain delegation)
 ansible-playbook upgrade_workers.yml -i inv -i nodeinv \
-  -e kubernetes_target_version=1.32.3-1.1 \
-  -e kubernetes_target_minor=v1.32 \
-  -e kubernetes_target_semver=v1.32.3
+  -e kubernetes_target_version=1.35.4-1.1 \
+  -e kubernetes_target_minor=v1.35 \
+  -e kubernetes_target_semver=v1.35.4
 ```
 
 ### Production example (with serial=1 and verbose)
 
 ```bash
 ansible-playbook upgrade_control_plane.yml -i inv \
-  -e kubernetes_target_version=1.32.3-1.1 \
-  -e kubernetes_target_minor=v1.32 \
-  -e kubernetes_target_semver=v1.32.3 \
+  -e kubernetes_target_version=1.35.4-1.1 \
+  -e kubernetes_target_minor=v1.35 \
+  -e kubernetes_target_semver=v1.35.4 \
   -e control_plane_serial=1 \
   -v
 
 ansible-playbook upgrade_workers.yml -i inv -i nodeinv \
-  -e kubernetes_target_version=1.32.3-1.1 \
-  -e kubernetes_target_minor=v1.32 \
-  -e kubernetes_target_semver=v1.32.3 \
+  -e kubernetes_target_version=1.35.4-1.1 \
+  -e kubernetes_target_minor=v1.35 \
+  -e kubernetes_target_semver=v1.35.4 \
   -e worker_serial=1 \
   -v
 ```
@@ -439,4 +439,4 @@ helm upgrade karpenter oci://public.ecr.aws/karpenter/karpenter \
 3. **containerd runtime**: The updated roles use containerd directly instead of Docker. Existing Docker-based nodes should work if Docker's containerd socket is available.
 4. **Karpenter IRSA**: The Karpenter role assumes IRSA or pod-identity is configured externally. The IAM role must be created separately.
 5. **Flannel CNI**: The control-plane role installs Flannel. If using a different CNI, modify `install_kubernetes.yml`.
-6. **Package versions**: The `kubernetes_target_version` format (e.g. `1.32.3-1.1`) follows the pkgs.k8s.io convention. Verify the exact available version with `apt-cache madison kubeadm`.
+6. **Package versions**: The `kubernetes_target_version` format (e.g. `1.35.4-1.1`) follows the pkgs.k8s.io convention. Verify the exact available version with `apt-cache madison kubeadm`.

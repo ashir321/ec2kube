@@ -9,9 +9,9 @@
 # ---------------------------------------------------------------------------
 # Target Kubernetes version for installation and upgrades.
 # Must match an available version in the pkgs.k8s.io repository.
-kubernetes_target_version: "1.32.3-1.1"
-# Minor version string used for the pkgs.k8s.io repository URL (e.g. "v1.32").
-kubernetes_target_minor: "v1.32"
+kubernetes_target_version: "1.35.4-1.1"
+# Minor version string used for the pkgs.k8s.io repository URL (e.g. "v1.35").
+kubernetes_target_minor: "v1.35"
 # Pod network CIDR passed to kubeadm init.
 kubernetes_pod_network_cidr: "10.244.0.0/16"
 

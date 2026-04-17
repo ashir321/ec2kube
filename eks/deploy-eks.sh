@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 ###############################################################################
-# deploy-eks.sh — Zero-Touch Amazon EKS 1.34 Deployment with Karpenter
+# deploy-eks.sh — Zero-Touch Amazon EKS 1.35 Deployment with Karpenter
 #
 # Supports AUTH_MODE = pod-identity | irsa | both
 #
 # Original project: ec2kube (self-managed K8s on EC2 via Terraform/Ansible)
-# Rewritten for: Amazon EKS 1.34 + Karpenter + Pod Identity / IRSA
+# Rewritten for: Amazon EKS 1.35 + Karpenter + Pod Identity / IRSA
 #
 # Usage:
 #   export AUTH_MODE=pod-identity   # or irsa, or both
@@ -14,7 +14,7 @@
 # Prerequisites:
 #   - AWS CLI v2 configured with sufficient permissions
 #   - eksctl >= 0.200.0
-#   - kubectl compatible with K8s 1.34
+#   - kubectl compatible with K8s 1.35
 #   - helm >= 3.16
 #   - jq, curl, envsubst (gettext)
 ###############################################################################
@@ -43,7 +43,7 @@ fi
 : "${AWS_ACCOUNT_ID:=""}"
 : "${CLUSTER_NAME:="ec2kube-eks"}"
 : "${AWS_REGION:="us-east-1"}"
-: "${K8S_VERSION:="1.34"}"
+: "${K8S_VERSION:="1.35"}"
 : "${AUTH_MODE:="pod-identity"}"
 : "${KARPENTER_VERSION:="1.3.0"}"
 : "${KARPENTER_NAMESPACE:="kube-system"}"
@@ -544,7 +544,7 @@ ok "aws-auth updated"
 
 # ── 4d. Karpenter Controller IAM Role ───────────────────────────────────────
 # For Karpenter controller, Pod Identity is the recommended approach on
-# EKS 1.34+. IRSA is supported as a fallback. We implement whichever
+# EKS 1.35+. IRSA is supported as a fallback. We implement whichever
 # AUTH_MODE the user selected.
 info "Creating Karpenter controller IAM role: $KARPENTER_CONTROLLER_ROLE_NAME"
 

@@ -3,9 +3,9 @@
 #
 # Usage:
 #   ansible-playbook upgrade_workers.yml -i nodeinv \
-#     -e kubernetes_target_version=1.32.3-1.1 \
-#     -e kubernetes_target_minor=v1.32 \
-#     -e kubernetes_target_semver=v1.32.3
+#     -e kubernetes_target_version=1.35.4-1.1 \
+#     -e kubernetes_target_minor=v1.35 \
+#     -e kubernetes_target_semver=v1.35.4
 #
 # This playbook upgrades worker nodes serially (one at a time by default)
 # to avoid cluster-wide disruption. Run this AFTER upgrading all
