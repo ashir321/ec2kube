@@ -1,6 +1,6 @@
 # ec2kube → EKS Modernization
 
-Zero-touch automation for **Amazon EKS on Kubernetes 1.34** with **Karpenter** node management and **dual identity support** (EKS Pod Identity + IRSA).
+Zero-touch automation for **Amazon EKS on Kubernetes 1.35** with **Karpenter** node management and **dual identity support** (EKS Pod Identity + IRSA).
 
 > **Original project**: Self-managed Kubernetes cluster on EC2 using Terraform, Ansible, and Jenkins.
 > **Modernized to**: Managed Amazon EKS with Karpenter autoscaling, current APIs, and production-safe defaults.
@@ -25,17 +25,17 @@ Zero-touch automation for **Amazon EKS on Kubernetes 1.34** with **Karpenter** n
 
 | # | Assumption |
 |---|-----------|
-| 1 | Amazon EKS supports Kubernetes **1.34** at time of execution |
+| 1 | Amazon EKS supports Kubernetes **1.35** at time of execution |
 | 2 | The operator has an AWS account with permissions to create EKS clusters, IAM roles/policies, EC2 instances, SQS queues, and EventBridge rules |
 | 3 | `aws`, `eksctl`, `kubectl`, `helm`, `jq`, and `curl` are installed and in `$PATH` |
-| 4 | `eksctl` version ≥ 0.200.0 (supports EKS 1.34 and Pod Identity) |
-| 5 | `kubectl` version is compatible with Kubernetes 1.34 (within ±1 minor version) |
+| 4 | `eksctl` version ≥ 0.200.0 (supports EKS 1.35 and Pod Identity) |
+| 5 | `kubectl` version is compatible with Kubernetes 1.35 (within ±1 minor version) |
 | 6 | `helm` version ≥ 3.16.x |
 | 7 | AWS CLI v2 is configured with credentials (`aws configure` or environment variables) |
-| 8 | Karpenter **v1.3.0** (or the version specified) is compatible with EKS 1.34 |
+| 8 | Karpenter **v1.3.0** (or the version specified) is compatible with EKS 1.35 |
 | 9 | Karpenter uses `karpenter.sh/v1` (NodePool) and `karpenter.k8s.aws/v1` (EC2NodeClass) APIs |
 | 10 | The cluster is **not greenfield** — the script handles both new creation and updates to existing clusters |
-| 11 | Pod Identity is the **recommended** identity mechanism for new EKS 1.34 deployments; IRSA is supported as a fallback |
+| 11 | Pod Identity is the **recommended** identity mechanism for new EKS 1.35 deployments; IRSA is supported as a fallback |
 | 12 | For the Karpenter controller, Pod Identity is preferred when `AUTH_MODE=pod-identity` or `both`; IRSA annotation is added as fallback when `AUTH_MODE=irsa` or `both` |
 | 13 | The managed node group (`system`) serves as a bootstrap pool for Karpenter pods and system workloads |
 | 14 | Amazon Linux 2023 is the default node OS via `amiSelectorTerms: [{alias: al2023@latest}]` |
@@ -52,7 +52,7 @@ All inputs are configured in **`eks/env.conf`**. Items marked **REQUIRED** must 
 | `CLUSTER_NAME` | optional | `ec2kube-eks` | EKS cluster name |
 | `AWS_REGION` | optional | `us-east-1` | AWS region |
 | `AUTH_MODE` | optional | `pod-identity` | Identity mode: `pod-identity`, `irsa`, or `both` |
-| `K8S_VERSION` | optional | `1.34` | Target Kubernetes version |
+| `K8S_VERSION` | optional | `1.35` | Target Kubernetes version |
 | `KARPENTER_VERSION` | optional | `1.3.0` | Karpenter Helm chart version |
 | `STATE_BUCKET` | optional | — | S3 bucket for Terraform state (legacy, not used by EKS scripts) |
 | `SSH_PUBLIC_KEY` | optional | — | SSH public key for node access |
@@ -124,7 +124,7 @@ The `deploy-eks.sh` script executes these phases in order:
 | Phase | Description | Key Actions |
 |-------|-------------|-------------|
 | **0** | Prerequisites & Validation | Check CLIs, versions, AWS identity, region, account match |
-| **1** | EKS Cluster | Check if cluster exists → create or upgrade to 1.34; update kubeconfig |
+| **1** | EKS Cluster | Check if cluster exists → create or upgrade to 1.35; update kubeconfig |
 | **2** | Add-on Updates | Update vpc-cni, coredns, kube-proxy, ebs-csi-driver, (pod-identity-agent); wait for ACTIVE |
 | **3** | Identity Setup | Based on `AUTH_MODE`: create OIDC provider (IRSA), install pod-identity-agent, verify agent health |
 | **4** | Karpenter IAM | Create node role + instance profile; create controller role + policy; create SQS queue + EventBridge rules; tag subnets/SGs; install Karpenter via Helm |
@@ -146,7 +146,7 @@ The `deploy-eks.sh` script executes these phases in order:
 | Aspect | Original (ec2kube) | Modernized (EKS) |
 |--------|-------------------|-------------------|
 | **Cluster type** | Self-managed K8s on EC2 (kubeadm) | Amazon EKS managed control plane |
-| **K8s version** | Unversioned (latest kubeadm) | Explicit 1.34 |
+| **K8s version** | Unversioned (latest kubeadm) | Explicit 1.35 |
 | **Control plane** | Single t3.medium EC2 instance | EKS managed (multi-AZ, HA) |
 | **Worker nodes** | ASG with kubeadm join | Karpenter + bootstrap managed node group |
 | **Node OS** | Ubuntu (bionic) with Docker | Amazon Linux 2023 (containerd) |
@@ -161,7 +161,7 @@ The `deploy-eks.sh` script executes these phases in order:
 | Item | Change | Reason |
 |------|--------|--------|
 | `kubeadm init/join` | Replaced by EKS managed control plane + Karpenter | EKS handles K8s lifecycle |
-| Docker runtime | Removed | EKS 1.34 uses containerd; Docker/dockershim removed in K8s 1.24 |
+| Docker runtime | Removed | EKS 1.35 uses containerd; Docker/dockershim removed in K8s 1.24 |
 | Flannel CNI | Replaced by Amazon VPC CNI | Native EKS networking with prefix delegation |
 | `aws_launch_configuration` | Removed | Deprecated; Karpenter manages instance lifecycle |
 | `aws_autoscaling_group` | Replaced by Karpenter NodePool | Dynamic, bin-packing provisioning |
@@ -202,11 +202,11 @@ The `deploy-eks.sh` script executes these phases in order:
 | **EKS requirement** | Pod Identity Agent add-on must be installed | OIDC provider must be associated |
 | **SDK requirement** | AWS SDK must support Pod Identity (2023+ SDK versions) | Supported by all modern SDKs |
 | **Cross-account** | Supported via trust policy | Supported via trust policy |
-| **Recommendation** | **Preferred for EKS 1.34+** | Fallback / legacy clusters |
+| **Recommendation** | **Preferred for EKS 1.35+** | Fallback / legacy clusters |
 
 ### Karpenter Controller Identity Decision
 
-**Recommendation**: Use **Pod Identity** for the Karpenter controller on EKS 1.34.
+**Recommendation**: Use **Pod Identity** for the Karpenter controller on EKS 1.35.
 
 - Pod Identity is simpler to configure and manage at scale
 - The Karpenter Helm chart supports both mechanisms
@@ -242,7 +242,7 @@ The `deploy-eks.sh` script executes these phases in order:
 | Existing cluster with IRSA already configured | Keep IRSA, migrate gradually |
 | Cross-account access | Either works; Pod Identity is simpler |
 | Application workloads | Pod Identity preferred |
-| Karpenter controller | Pod Identity preferred on 1.34 |
+| Karpenter controller | Pod Identity preferred on 1.35 |
 | Third-party controllers that don't support Pod Identity yet | IRSA |
 
 ---
@@ -411,8 +411,8 @@ If you have an existing self-managed cluster from the original ec2kube project:
 
 | # | Risk / Item | Mitigation |
 |---|-------------|------------|
-| 1 | **EKS 1.34 availability**: EKS may not yet support 1.34 in all regions | Verify with `aws eks describe-addon-versions --kubernetes-version 1.34` before running |
-| 2 | **Karpenter version compatibility**: v1.3.0 compatibility with K8s 1.34 must be verified | Check [Karpenter compatibility matrix](https://karpenter.sh/docs/upgrading/compatibility/) |
+| 1 | **EKS 1.35 availability**: EKS may not yet support 1.35 in all regions | Verify with `aws eks describe-addon-versions --kubernetes-version 1.35` before running |
+| 2 | **Karpenter version compatibility**: v1.3.0 compatibility with K8s 1.35 must be verified | Check [Karpenter compatibility matrix](https://karpenter.sh/docs/upgrading/compatibility/) |
 | 3 | **Service quotas**: Account may have insufficient EC2 instance limits | Review `aws service-quotas list-service-quotas --service-code ec2` |
 | 4 | **VPC CIDR exhaustion**: Default VPC may run out of IPs under heavy scaling | Enable VPC CNI prefix delegation (enabled by default in this config) |
 | 5 | **Spot interruptions**: Spot instances may be reclaimed | Karpenter handles interruptions via SQS + EventBridge; configure `consolidationPolicy` appropriately |

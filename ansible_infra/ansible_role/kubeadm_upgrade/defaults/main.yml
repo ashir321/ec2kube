@@ -3,11 +3,11 @@
 # All values can be overridden via group_vars, host_vars, or extra-vars.
 
 # Target Kubernetes version for the upgrade (full package version string).
-kubernetes_target_version: "1.32.3-1.1"
-# Minor version for the pkgs.k8s.io repository URL (e.g. "v1.32").
-kubernetes_target_minor: "v1.32"
-# Semantic version string for kubeadm upgrade apply (e.g. "v1.32.3").
-kubernetes_target_semver: "v1.32.3"
+kubernetes_target_version: "1.35.4-1.1"
+# Minor version for the pkgs.k8s.io repository URL (e.g. "v1.35").
+kubernetes_target_minor: "v1.35"
+# Semantic version string for kubeadm upgrade apply (e.g. "v1.35.4").
+kubernetes_target_semver: "v1.35.4"
 
 # Drain / uncordon
 drain_timeout: 300
