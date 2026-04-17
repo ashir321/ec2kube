@@ -1,0 +1,53 @@
+---
+# ============================================================================
+# Centralized version and configuration defaults for ec2kube
+# Override per-environment via inventory group_vars or extra-vars.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Kubernetes versions
+# ---------------------------------------------------------------------------
+# Target Kubernetes version for installation and upgrades.
+# Must match an available version in the pkgs.k8s.io repository.
+kubernetes_target_version: "1.32.3-1.1"
+# Minor version string used for the pkgs.k8s.io repository URL (e.g. "v1.32").
+kubernetes_target_minor: "v1.32"
+# Pod network CIDR passed to kubeadm init.
+kubernetes_pod_network_cidr: "10.244.0.0/16"
+
+# ---------------------------------------------------------------------------
+# Karpenter
+# ---------------------------------------------------------------------------
+karpenter_version: "1.8.6"
+karpenter_namespace: "karpenter"
+karpenter_helm_repo_name: "karpenter"
+karpenter_helm_repo_url: "oci://public.ecr.aws/karpenter"
+karpenter_helm_chart: "karpenter"
+karpenter_release_name: "karpenter"
+# Cluster-specific values – must be overridden per environment.
+karpenter_cluster_name: ""
+karpenter_cluster_endpoint: ""
+# IAM role ARN for Karpenter controller (IRSA or pod-identity).
+karpenter_iam_role_arn: ""
+# Karpenter interruption queue name (SQS).
+karpenter_interruption_queue_name: ""
+
+# ---------------------------------------------------------------------------
+# Drain / uncordon settings
+# ---------------------------------------------------------------------------
+drain_timeout: 300
+drain_grace_period: 30
+drain_delete_emptydir_data: true
+drain_ignore_daemonsets: true
+drain_force: false
+
+# ---------------------------------------------------------------------------
+# Serial execution controls
+# ---------------------------------------------------------------------------
+control_plane_serial: 1
+worker_serial: 1
+
+# ---------------------------------------------------------------------------
+# AWS region (used by playbooks that query AWS APIs)
+# ---------------------------------------------------------------------------
+aws_region: "us-east-1"

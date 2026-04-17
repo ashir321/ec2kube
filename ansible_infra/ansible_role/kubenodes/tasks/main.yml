@@ -1,17 +1,37 @@
 ---
-# tasks file for kubecontrolplane
+# tasks file for kubenodes
+# Installs containerd and Kubernetes on worker nodes.
 
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [packages]
 
-- name: Run the equivalent of "apt-get update" as a separate step
-  apt:
-    update_cache: yes
-- name: Install utils
-  apt:
-    name: "{{ item }}"
+- name: Install prerequisite utilities
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+      - curl
+      - gnupg
     state: present
-  loop:
-    - apt-transport-https
-    - software-properties-common
-    - curl
-- include_tasks: install_docker.yml
-- include_tasks: install_kubernetes.yml
+  when: ansible_os_family == "Debian"
+  tags: [packages]
+
+- name: Install prerequisite utilities (RedHat)
+  ansible.builtin.yum:
+    name:
+      - curl
+      - gnupg2
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: [packages]
+
+- name: Install containerd
+  ansible.builtin.include_tasks: install_containerd.yml
+  tags: [containerd]
+
+- name: Install Kubernetes
+  ansible.builtin.include_tasks: install_kubernetes.yml
+  tags: [kubernetes]

@@ -1,37 +1,120 @@
 ---
+# install_kubernetes.yml – Install kubeadm, kubelet, kubectl on worker nodes.
+# Uses the current pkgs.k8s.io repository (not the legacy apt.kubernetes.io).
 
-- name: add GPG key
-  apt_key:
-    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+# ---- Repository setup (Debian/Ubuntu) ----
+
+- name: Ensure /etc/apt/keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+- name: Download Kubernetes APT signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.key
+    mode: "0644"
+    force: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+- name: De-armor Kubernetes APT signing key
+  ansible.builtin.command:
+    cmd: gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-release.key
+  changed_when: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+- name: Add Kubernetes APT repository (pkgs.k8s.io)
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg]
+      https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/deb/ /
     state: present
-- name: Add specified repository into sources list
-  apt_repository:
-    repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+    filename: kubernetes
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, repo]
+
+# ---- Repository setup (RHEL/CentOS) ----
+
+- name: Add Kubernetes YUM repository (pkgs.k8s.io)
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: "Kubernetes {{ kubernetes_target_minor }}"
+    baseurl: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/rpm/"
+    gpgcheck: true
+    gpgkey: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_target_minor }}/rpm/repodata/repomd.xml.key"
+    enabled: true
+  when: ansible_os_family == "RedHat"
+  tags: [kubernetes, repo]
+
+# ---- Install packages ----
+
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, packages]
+
+- name: Install kubelet, kubeadm, kubectl (Debian)
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ kubernetes_target_version }}"
+      - "kubeadm={{ kubernetes_target_version }}"
+      - "kubectl={{ kubernetes_target_version }}"
     state: present
-- name: Run the equivalent of "apt-get update" as a separate step
-  apt:
-    update_cache: yes
-- name: Install kube and kubectl
-  apt:
+    allow_downgrade: true
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, packages]
+
+- name: Hold Kubernetes packages (Debian)
+  ansible.builtin.dpkg_selections:
     name: "{{ item }}"
-    state: latest
-    #update_cache: yes
+    selection: hold
   loop:
     - kubelet
     - kubeadm
     - kubectl
-- name: swapoff for kubernetes
-  command: swapoff -a
-- name: update docker file system
-  template:
-    src: daemon.json.j2
-    dest: /etc/docker/daemon.json
-  notify: docker service
-- name: restart docker
-  command: systemctl restart docker
+  when: ansible_os_family == "Debian"
+  tags: [kubernetes, packages]
 
-- name: remove containerd config
-  command: rm -f /etc/containerd/config.toml
+- name: Install kubelet, kubeadm, kubectl (RedHat)
+  ansible.builtin.yum:
+    name:
+      - "kubelet-{{ kubernetes_target_version }}"
+      - "kubeadm-{{ kubernetes_target_version }}"
+      - "kubectl-{{ kubernetes_target_version }}"
+    state: present
+    allow_downgrade: true
+  when: ansible_os_family == "RedHat"
+  tags: [kubernetes, packages]
 
-- name: restart containerd
-  command: systemctl restart containerd
+# ---- Worker node preparation ----
+
+- name: Disable swap (required by kubelet)
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+  tags: [kubernetes, init]
+
+- name: Remove containerd default config to use defaults
+  ansible.builtin.file:
+    path: /etc/containerd/config.toml
+    state: absent
+  notify: Restart containerd
+  tags: [kubernetes, init]
+
+- name: Flush handlers to restart containerd
+  ansible.builtin.meta: flush_handlers
+
+# ---- Enable and start kubelet ----
+
+- name: Enable and start kubelet
+  ansible.builtin.service:
+    name: kubelet
+    state: started
+    enabled: true
+  tags: [kubernetes, service]

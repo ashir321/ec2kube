@@ -1,0 +1,65 @@
+---
+# install_containerd.yml – Install containerd as the container runtime on worker nodes.
+
+- name: Install containerd package (Debian)
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [containerd]
+
+- name: Install containerd package (RedHat)
+  ansible.builtin.yum:
+    name: containerd
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: [containerd]
+
+- name: Ensure containerd config directory exists
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+  tags: [containerd]
+
+- name: Enable and start containerd
+  ansible.builtin.service:
+    name: containerd
+    state: started
+    enabled: true
+  tags: [containerd]
+
+- name: Ensure br_netfilter module is loaded
+  community.general.modprobe:
+    name: br_netfilter
+    state: present
+  tags: [containerd, sysctl]
+
+- name: Ensure overlay module is loaded
+  community.general.modprobe:
+    name: overlay
+    state: present
+  tags: [containerd, sysctl]
+
+- name: Persist kernel modules across reboots
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    mode: "0644"
+  tags: [containerd, sysctl]
+
+- name: Set sysctl parameters for Kubernetes
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+    - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+    - { key: "net.ipv4.ip_forward", value: "1" }
+  tags: [containerd, sysctl]
