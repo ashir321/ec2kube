@@ -42,11 +42,12 @@
     set -euo pipefail
     echo '{{ _karpenter_template.stdout }}' | \
       awk '/^---/{found=0} /kind: CustomResourceDefinition/{found=1} found{print}' | \
-      kubectl apply --server-side --force-conflicts -f - 2>&1 || true
+      kubectl apply --server-side --force-conflicts -f - 2>&1
   args:
     executable: /bin/bash
   register: _crd_apply
   changed_when: "'configured' in _crd_apply.stdout or 'created' in _crd_apply.stdout"
+  failed_when: _crd_apply.rc != 0 and 'no objects passed to apply' not in _crd_apply.stderr
   when:
     - karpenter_upgrade_crds_first | bool
     - _karpenter_template.stdout | default('') | length > 0
