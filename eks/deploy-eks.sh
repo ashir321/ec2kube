@@ -77,7 +77,8 @@ KARPENTER_CONTROLLER_ROLE_NAME="KarpenterControllerRole-${CLUSTER_NAME}"
 KARPENTER_INSTANCE_PROFILE_NAME="KarpenterNodeInstanceProfile-${CLUSTER_NAME}"
 KARPENTER_QUEUE_NAME="${CLUSTER_NAME}-karpenter"
 MNG_NODE_GROUP_NAME="${CLUSTER_NAME}-system"
-MNG_NODE_ROLE_NAME="${CLUSTER_NAME}-managed-node-role"
+# Karpenter node role is managed by eksctl automatically for managed node groups.
+# This name documents the separate role created for Karpenter-launched nodes.
 
 ###############################################################################
 # PHASE 0: Prerequisites & Environment Validation
@@ -456,7 +457,7 @@ if [[ "$AUTH_MODE" == "pod-identity" || "$AUTH_MODE" == "both" ]]; then
 
   # Verify agent pods are running
   info "Checking pod-identity-agent daemon pods…"
-  local_waited=0
+  pi_waited=0
   while true; do
     READY_AGENTS=$(kubectl get ds -n kube-system eks-pod-identity-agent -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
     DESIRED_AGENTS=$(kubectl get ds -n kube-system eks-pod-identity-agent -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || echo "0")
@@ -466,8 +467,8 @@ if [[ "$AUTH_MODE" == "pod-identity" || "$AUTH_MODE" == "both" ]]; then
     fi
     info "Pod Identity Agent: $READY_AGENTS/$DESIRED_AGENTS ready — waiting…"
     sleep "$POLL_INTERVAL"
-    local_waited=$((local_waited + POLL_INTERVAL))
-    [[ $local_waited -ge $WAIT_TIMEOUT ]] && { warn "Pod Identity Agent not fully ready — continuing"; break; }
+    pi_waited=$((pi_waited + POLL_INTERVAL))
+    [[ $pi_waited -ge $WAIT_TIMEOUT ]] && { warn "Pod Identity Agent not fully ready — continuing"; break; }
   done
 fi
 
